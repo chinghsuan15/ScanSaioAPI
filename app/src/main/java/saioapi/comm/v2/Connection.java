@@ -21,7 +21,7 @@ abstract class Connection {
     private byte[] mVngCmd;
     
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    abstract int open(int dev);
+    abstract int open(int dev, int interface_id);
     abstract int[] getUsbDevId(int vid, int pid, int bcdDevice);
     abstract int close();
     protected abstract int bulkWrite(byte[] data, int timeout);
@@ -110,7 +110,6 @@ abstract class Connection {
                 if (writeLen > 0) {
                     //Send command succeeded
                     i = SEND_COMMAND_SUCCESS;
-                    Log.d(TAG, "VNG_write(), SEND_COMMAND_SUCCESS");
                     //break;
                 } else {
                     //Send command failed

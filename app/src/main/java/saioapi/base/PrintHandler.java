@@ -44,14 +44,13 @@ class PrintHandler
     //
     private Integer _nAction                        = ACTION_NONE;
     private Boolean _bRequestStatus                 = false;
-    private Boolean _bDoCmd                         = false;
     private Boolean _bDoRsmCncl                     = false;
 
-    private final Object _lockNAction = new Object();
-    private final Object _lockBDoRsmCncl = new Object();
-    private final Object _lockCmdList = new Object();
-    private final Object _lockNStatus = new Object();
-    private final Object _lockBDoCmd = new Object();
+    private final Object _lockNAction               = new Object();
+    private final Object _lockCmdList               = new Object();
+    private final Object _lockNStatus               = new Object();
+    private final Object _lockDoCmd                 = new Object();
+    private final Object _lockDoRsmCncl             = new Object();
     
     private PrintInterface _p                       = null;
     private int _nHandle                            = 0;
@@ -77,7 +76,12 @@ class PrintHandler
             _nErrno = Print.ERR_NO_LISTENER;
             return Print.ERR_OPERATION;
         }
-        
+
+        synchronized(_lockNAction)
+        {
+            _nAction = ACTION_NONE;
+        }
+
         synchronized(this)
         {
             //already opened
@@ -94,9 +98,7 @@ class PrintHandler
                 _nHandle = 0;   //reset to not opened
                 return Print.ERR_OPERATION;
             }
-
-            _nAction = ACTION_NONE;
-
+            
             //
             // Empty the printer buffer
             //
@@ -114,7 +116,7 @@ class PrintHandler
     {
         int handle = _nHandle;
         
-        synchronized(_lockBDoCmd)
+        synchronized(_lockDoCmd)
         {
             _nHandle = 0;
         }
@@ -180,7 +182,6 @@ class PrintHandler
         {
             _cmdList.add(trimData);
         }
-        
         return 0;
     }
     
@@ -230,7 +231,7 @@ class PrintHandler
             _nErrno = Print.ERR_NOT_OPEN;
             return Print.ERR_OPERATION;
         }
-        
+
         synchronized(_lockNStatus)
         {
             if((_nStatus & PAPER_OUT) == PAPER_OUT || (_nStatus & COVER_OPEN) == COVER_OPEN)
@@ -240,21 +241,19 @@ class PrintHandler
                 return Print.ERR_NOT_READY;
             }
         }
-
         synchronized(_lockNAction)
         {
             if(ACTION_PRINT_PENDING == _nAction)
             {
                 _nAction = ACTION_PRINT;
-                
-                synchronized(_lockBDoRsmCncl)
+
+                synchronized(_lockDoRsmCncl)
                 {
                     _bDoRsmCncl = true;
                 }
                 Log.i(TAG, "Resume()");
             }
         }
-        
         return 0;
     }
     
@@ -265,12 +264,11 @@ class PrintHandler
             _nErrno = Print.ERR_NOT_OPEN;
             return Print.ERR_OPERATION;
         }
-        
+
         synchronized(_lockCmdList)
         {
             _cmdList.clear();
         }
-        
         synchronized(_lockNAction)
         {
             if(ACTION_PRINT_PENDING == _nAction)
@@ -280,13 +278,12 @@ class PrintHandler
 
             // _nAction will become ACTION_NONE if Print.PRINT_JOB_CANCEL == _ctrl && errors occurred (paper out or cover opened ...)
             // so move below to reset status bit - PRINTER_IN_PENDING
-            synchronized(_lockBDoRsmCncl)
+            synchronized(_lockDoRsmCncl)
             {
                 _bDoRsmCncl = true;
             }
             Log.i(TAG, "Cancel()");
         }
-        
         return _command(ESC_CMD_CANCEL);
     }
     
@@ -317,6 +314,7 @@ class PrintHandler
                 synchronized(_lockNAction)
                 {
                     i++;
+
                     //
                     // Terminate
                     //
@@ -400,36 +398,43 @@ class PrintHandler
         @Override
         public void run()
         {
+            byte[] cmdList = null;
             while(true)
             {
+                try{
+                    int nSleep = 50;
+                    synchronized(_lockNAction)
+                    {
+                        if (ACTION_PRINT == _nAction)
+                            nSleep = 5;
+                    }
+                    Thread.sleep(nSleep);
+                    //Log.v(TAG, "PrintThread sleep(" + nSleep + ")");
+                }catch(InterruptedException e){}
+
+                //
+                // Terminate
+                //
+                if(_bStop)
+                {
+                    synchronized(_lockNAction)
+                    {
+                        _nAction = ACTION_NONE;
+                        break;
+                    }
+                }
+                
+                //
+                // User request status
+                //
+                if(_bRequestStatus)
+                    continue;
+
                 //
                 // Check action status
                 //
                 synchronized(_lockNAction)
                 {
-                    try{
-                        int nSleep = 50;
-                        if(ACTION_PRINT == _nAction)
-                            nSleep = 5;
-                        Thread.sleep(nSleep);
-                        //Log.v(TAG, "PrintThread sleep(" + nSleep + ")");
-                    }catch(InterruptedException e){}
-
-                    //
-                    // Terminate
-                    //
-                    if(_bStop)
-                    {
-                        _nAction = ACTION_NONE;
-                        break;
-                    }
-
-                    //
-                    // User request status
-                    //
-                    if(_bRequestStatus)
-                        continue;
-
                     //
                     // Pending
                     //
@@ -478,30 +483,38 @@ class PrintHandler
                         //
                         // Check list before send command
                         //
-                        synchronized(_lockCmdList) {
-                            if (0 == _cmdList.size())
+                        synchronized(_lockCmdList)
+                        {
+                            if(0 == _cmdList.size())
                                 continue;
-                        }
                             
-                        //
-                        // Sending command
-                        //
-                        if(_debug)Log.v(TAG, "\nPrintThread: send cmd to printer (all: " + _cmdList.size() + ")");
-                        _nAction = ACTION_PRINT;
-                        if(0 == _command(_cmdList.get(0))){ //success
+                            //
+                            // Sending command
+                            //
+                            if(_debug)Log.v(TAG, "\nPrintThread: send cmd to printer (all: " + _cmdList.size() + ")");
+                            _nAction = ACTION_PRINT;
+                            cmdList = _cmdList.get(0);
+                        }
 
-                            // {
+                        int cmdResult = _command(cmdList);
+                        if(0 == cmdResult) //success
+                        {
                             synchronized(_lockCmdList)
                             {
                                 _cmdList.remove(0);
-                                if (0 == _cmdList.size()) {
+                                
+                                if(0 == _cmdList.size())
+                                {
                                     _nAction = ACTION_NONE;
-                                    new Thread() {
+                                    new Thread()
+                                    {
                                         @Override
-                                        public void run() {
-                                            if (null != _p && 0 != _nHandle)
+                                        public void run()
+                                        {
+                                            if(null != _p && 0 != _nHandle)
                                                 _p.listener(_nHandle, Print.EVENT_STATUS_DONE);
                                         }
+                                        
                                     }.start();
                                 }
                             }
@@ -547,7 +560,7 @@ class PrintHandler
             //
             // Prevent write or read after printer being closed.
             //
-            synchronized(_lockBDoCmd)
+            synchronized(_lockDoCmd)
             {
                 if(0 == _nHandle)
                 {
@@ -761,9 +774,12 @@ class PrintHandler
         if ((status1 & 0x10) == 0x10) i |= PRINTER_IN_USE;
         if ((status2 & 0x01) == 0x01) i |= COVER_OPEN;
 
-        if(_cmdList.size() > 0)
+        synchronized(_lockCmdList)
         {
-            i |= PRINTER_IN_USE;
+            if(_cmdList.size() > 0)
+            {
+                i |= PRINTER_IN_USE;
+            }
         }
         
         if ((_nStatus & PRINTER_IN_PENDING) == PRINTER_IN_PENDING) //already pending
@@ -771,8 +787,8 @@ class PrintHandler
         else if((i & PRINTER_IN_USE) == PRINTER_IN_USE //busy and paper out, or busy and cover open
                 && ((status1 & 0x08) == 0x08 || (status2 & 0x01) == 0x01))
             i |= PRINTER_IN_PENDING;
-        
-        synchronized(_lockBDoRsmCncl)
+
+        synchronized(_lockDoRsmCncl)
         {
             if((i & PRINTER_IN_PENDING) == PRINTER_IN_PENDING && _bDoRsmCncl)
             {
@@ -780,7 +796,6 @@ class PrintHandler
             }
             _bDoRsmCncl = false;
         }
-        
         synchronized(_lockNStatus)
         {
             if(_nStatus != i)

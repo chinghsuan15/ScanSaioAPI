@@ -73,9 +73,6 @@ public class ComManager {
     /** Signals the device just gets connection with host. */
     public static final int EVENT_CONNECT       = 0x00000004;
 
-    /** Indicates that the EPP has been reset. */
-    public static final int EVENT_EPP_RESET     = 0x00000005;
-
     /** Raw communication. */
     public static final int PROTOCOL_RAW_DATA    = 0x00000000;
 
@@ -391,7 +388,7 @@ public class ComManager {
         checkDevice(dev_id);
         if (isUsbdevice) {
             mNativeUsb = new NativeUsb(mContext,_onComEventListener,mUsbReconnect);
-            ret = mNativeUsb.open(dev_id);
+            ret = mNativeUsb.open(dev_id, -1);
             if (ret != ERR_NOT_OPEN && ret != ERR_NOT_EXIST) {
                 _rt = new _ReadThread();
             }else{
@@ -403,6 +400,27 @@ public class ComManager {
             }else{
                 ret = ERR_INVALID_PARAM;
             }
+        }
+        broadcastDiagIntent(ret);
+        return ret;
+    }
+
+    /**
+     * This method tries to open the communication service with the usb device.
+     * @param dev_id  Logical ID of the selected communication device where the connection to be established.
+     *               The ID should be one element value of {@link #getUsbDevId} return array.
+     * @param interface_id The interface's bInterfaceNumber field of the usb device.
+     * @return Return zero if the function succeeds. Otherwise a nonzero error code defined in class constants.
+     */
+    public int openUsbDev(int dev_id, int interface_id) {
+        int ret ;
+        isUsbdevice = true;
+        mNativeUsb = new NativeUsb(mContext,_onComEventListener,mUsbReconnect);
+        ret = mNativeUsb.open(dev_id, interface_id);
+        if (ret != ERR_NOT_OPEN && ret != ERR_NOT_EXIST) {
+            _rt = new _ReadThread();
+        }else{
+            mNativeUsb = null;
         }
         broadcastDiagIntent(ret);
         return ret;
@@ -466,9 +484,9 @@ public class ComManager {
         if (isUsbdevice) {
             if (mNativeUsb != null && _rt != null && !_rt.isAlive()){
                 try {
-                    _rt.start();
                     mNativeUsb.setup(baud, data_size, stop_bit, parity, flow_control, extra);
                     ret = mNativeUsb.connect(protocol);
+                    _rt.start();
                 } catch(NullPointerException e) {
                     ret = ERR_NOT_OPEN;
                     Log.d(TAG, "connect: NullPointerException caught");
@@ -677,7 +695,7 @@ public class ComManager {
     }
 
     /**
-     * Set RTS signal (only worked when HW flow control is not enabled)
+     * Set RTS signal (only works when hardware flow control is supported and enabled)
      * @param rts 1 to enable RTS; 0 to disable RTS
      * @return Return {@link #ERR_INVALID_PARAM} if USB device is opened else the device status is returned for success or a {@link #ERR_OPERATION} is returned.
      *         The method {@link #lastError} can be used to indicate the error.

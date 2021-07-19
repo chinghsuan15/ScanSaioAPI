@@ -382,7 +382,7 @@ public class XacCmdPrint extends Print
                 {
                     int r = raw.length % nMaxCmdLen;
                     cmd = newGraphicCommand(printWidth, r);
-                    nCmdLen = ((r % printWidth.nativeInt) == 0)? r : r - (r % printWidth.nativeInt) + printWidth.nativeInt;
+                    //nCmdLen = ((r % printWidth.nativeInt) == 0)? r : r - (r % printWidth.nativeInt) + printWidth.nativeInt;
                     System.arraycopy(raw, nb, cmd, nCommandHeader, r);
                 }
                 

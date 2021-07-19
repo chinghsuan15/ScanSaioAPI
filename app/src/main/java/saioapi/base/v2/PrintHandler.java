@@ -58,15 +58,14 @@ class PrintHandler
     //
     private Integer _nAction                        = ACTION_NONE;
     private Boolean _bRequestStatus                 = false;
-    private Boolean _bDoCmd                         = false;
     private Boolean _bDoRsmCncl                     = false;
 
-    private final Object _lockNAction = new Object();
-    private final Object _lockBDoRsmCncl = new Object();
-    private final Object _lockCmdList = new Object();
-    private final Object _lockNStatus = new Object();
-    private final Object _lockBDoCmd = new Object();
-    private final Object _lockBatteryInfo = new Object();
+    private final Object _lockNAction               = new Object();
+    private final Object _lockCmdList               = new Object();
+    private final Object _lockNStatus               = new Object();
+    private final Object _lockDoCmd                 = new Object();
+    private final Object _lockDoRsmCncl             = new Object();
+    private final Object _lockBatteryInfo           = new Object();
     
     private Context _c                              = null;
     private UsbInterface _uif                       = null;
@@ -109,6 +108,11 @@ class PrintHandler
             _nErrno = Print.ERR_INVALID_PARAM;
             return Print.ERR_OPERATION;
         }
+
+        synchronized(_lockNAction)
+        {
+            _nAction = ACTION_NONE;
+        }
         
         synchronized(this)
         {
@@ -128,9 +132,7 @@ class PrintHandler
                 _nHandle = 0;   //reset to not opened
                 return Print.ERR_OPERATION;
             }
-            
-            _nAction = ACTION_NONE;
-            
+   
             //
             // Empty the printer buffer
             //
@@ -291,7 +293,7 @@ class PrintHandler
             {
                 _nAction = ACTION_PRINT;
                 
-                synchronized(_lockBDoRsmCncl)
+                synchronized(_lockDoRsmCncl)
                 {
                     _bDoRsmCncl = true;
                 }
@@ -324,7 +326,7 @@ class PrintHandler
 
             // _nAction will become ACTION_NONE if Print.PRINT_JOB_CANCEL == _ctrl && errors occurred (paper out or cover opened ...)
             // so move below to reset status bit - PRINTER_IN_PENDING
-            synchronized(_lockBDoRsmCncl)
+            synchronized(_lockDoRsmCncl)
             {
                 _bDoRsmCncl = true;
             }
@@ -359,7 +361,10 @@ class PrintHandler
             if(_bSpiPrinter)
             {
                 nSleep = 200;
-                nPollCount = 1000 / nSleep;
+                synchronized(_lockNAction)
+                {
+                    nPollCount = 1000 / nSleep;
+                }
             }
 
             while(true)
@@ -373,7 +378,6 @@ class PrintHandler
                 //
                 synchronized(_lockNAction)
                 {
-
                     i++;
 
                     //
@@ -459,39 +463,43 @@ class PrintHandler
         @Override
         public void run()
         {
+            byte[] cmdList  = null;
             while(true)
             {
+                try{
+                    int nSleep = 50;
+                    synchronized(_lockNAction)
+                    {
+                        if (ACTION_PRINT == _nAction)
+                            nSleep = 5;
+                    }
+                    Thread.sleep(nSleep);
+                    //Log.v(TAG, "PrintThread sleep(" + nSleep + ")");
+                }catch(InterruptedException e){}
+
+                //
+                // Terminate
+                //
+                if(_bStop)
+                {
+                    synchronized(_lockNAction)
+                    {
+                        _nAction = ACTION_NONE;
+                        break;
+                    }
+                }
+
+                //
+                // User request status
+                //
+                if(_bRequestStatus)
+                    continue;
+
                 //
                 // Check action status
                 //
                 synchronized(_lockNAction)
                 {
-                    try{
-                        int nSleep = 50;
-                        if(ACTION_PRINT == _nAction)
-                            nSleep = 5;
-                        Thread.sleep(nSleep);
-                        //Log.v(TAG, "PrintThread sleep(" + nSleep + ")");
-                    }catch(InterruptedException e){}
-
-                    //
-                    // Terminate
-                    //
-                    if(_bStop)
-                    {
-                        synchronized(_lockNAction)
-                        {
-                            _nAction = ACTION_NONE;
-                            break;
-                        }
-                    }
-
-                    //
-                    // User request status
-                    //
-                    if(_bRequestStatus)
-                        continue;
-
                     //
                     // Pending
                     //
@@ -542,15 +550,21 @@ class PrintHandler
                         //
                         synchronized(_lockCmdList)
                         {
-                            if(0 == _cmdList.size())
+                            if (0 == _cmdList.size())
                                 continue;
-                            
+
                             //
                             // Sending command
                             //
-                            if(_debug)Log.v(TAG, "\nPrintThread: send cmd to printer (all: " + _cmdList.size() + ")");
+                            if (_debug)
+                                Log.v(TAG, "\nPrintThread: send cmd to printer (all: " + _cmdList.size() + ")");
                             _nAction = ACTION_PRINT;
-                            if(0 == _command(_cmdList.get(0)))//success
+                            cmdList = _cmdList.get(0);
+                        }
+                        int cmdResult = _command(cmdList);
+                        if(0 == cmdResult) //success
+                        {
+                            synchronized(_lockCmdList)
                             {
                                 _cmdList.remove(0);
                                 
@@ -611,7 +625,7 @@ class PrintHandler
             //
             // Prevent write or read after printer being closed.
             //
-            synchronized(_lockBDoCmd)
+            synchronized(_lockDoCmd)
             {
                 if(0 == _nHandle)
                 {
@@ -825,8 +839,7 @@ class PrintHandler
                     //battery status
                     if(0x52 == _buf[3])
                     {
-                        synchronized (_lockBatteryInfo)
-                        {
+                        synchronized (_lockBatteryInfo){
                             _batteryInfo = new byte[3];
                             _batteryInfo[0] = _buf[4];
                             _batteryInfo[1] = _buf[5];
@@ -904,9 +917,12 @@ class PrintHandler
         if ((status1 & 0x10) == 0x10) i |= PRINTER_IN_USE;
         if ((status2 & 0x01) == 0x01) i |= COVER_OPEN;
 
-        if(_cmdList.size() > 0)
+        synchronized(_lockCmdList)
         {
-            i |= PRINTER_IN_USE;
+            if(_cmdList.size() > 0)
+            {
+                i |= PRINTER_IN_USE;
+            }
         }
         
         if ((_nStatus & PRINTER_IN_PENDING) == PRINTER_IN_PENDING) //already pending
@@ -915,7 +931,7 @@ class PrintHandler
                 && ((status1 & 0x08) == 0x08 || (status2 & 0x01) == 0x01))
             i |= PRINTER_IN_PENDING;
         
-        synchronized(_lockBDoRsmCncl)
+        synchronized(_lockDoRsmCncl)
         {
             if((i & PRINTER_IN_PENDING) == PRINTER_IN_PENDING && _bDoRsmCncl)
             {

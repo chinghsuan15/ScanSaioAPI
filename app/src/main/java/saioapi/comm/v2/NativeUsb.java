@@ -13,6 +13,7 @@ import android.hardware.usb.UsbConstants;
 import android.content.Context;
 import android.util.Log;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -34,10 +35,11 @@ class NativeUsb extends Connection{
     private int mBcdDevice = -1;
     private OnComEventListener mOnComEventListener = null;
     private Context mContext;
-    boolean mReconnectEvent;
+    private boolean mReconnectEvent;
+    private boolean mReconnet = false;
     private int LOG_MAX_LENGTH = 256;
     private static final int USB_WRITE_TIMEOUT_MILLIS = 100;
-
+    private int usbInterfaceId;
 
     NativeUsb(Context context,OnComEventListener listener, boolean reconnect)
     {
@@ -58,12 +60,24 @@ class NativeUsb extends Connection{
         }
     }
 
-    private boolean openEndpoint() {
+    private boolean openEndpoint(int interface_id) {
         //Log.i(TAG,"XAC ID: " + usbDevice.getDeviceId());
         // Attempt to connect to each USB device and send a API_VERSION message to the device until pinpad is found
         // Obtain the interface for the USB device
 
-        for (int i = 0; i < usbDevice.getInterfaceCount(); i++) {
+        int index = 0 ;
+        int interfaceCount = usbDevice.getInterfaceCount();
+        if (interface_id != -1) {
+            if (interface_id < usbDevice.getInterfaceCount()) {
+                index = interface_id;
+                interfaceCount = interface_id + 1;
+            } else {
+                close();
+                return false;
+            }
+        }
+        Log.i("openUsbDev", "interface_id:" + interface_id+" / index:" + index+" / interfaceCount:" + interfaceCount);
+        for (int i = index; i < interfaceCount; i++) {
             mUsbInterface = usbDevice.getInterface(i);
             // Endpoint Configuration
             for (int j = 0; j < mUsbInterface.getEndpointCount(); j++) {
@@ -73,7 +87,7 @@ class NativeUsb extends Connection{
                         if (mUsbEndpoint.getDirection() == UsbConstants.USB_DIR_IN) {
                             mUsbInEndpoint = mUsbEndpoint;
                             mEndpointIn = true;
-                        } else {
+                        } else if (mUsbEndpoint.getDirection() == UsbConstants.USB_DIR_OUT) {
                             mUsbOutEndpoint = mUsbEndpoint;
                             mEndpointOut = true;
                         }
@@ -118,24 +132,27 @@ class NativeUsb extends Connection{
 
     void setup(int baudRate, int data_size, int stop_bit, int parity, int flow_control, byte[] extra) {
         Log.d(TAG, "VID:" + String.format("0x%04X", usbDevice.getVendorId())+" / PID:" + String.format("0x%04X", usbDevice.getProductId()));
-        if ((usbDevice.getVendorId() == ComManager.USB_VID_PL2303 && usbDevice.getProductId() == ComManager.USB_PID_PL2303)
-                || (usbDevice.getVendorId() == ComManager.USB_VID_V10 && usbDevice.getProductId() == ComManager.USB_PID_V10))
+        if (usbDevice.getVendorId() == ComManager.USB_VID_PL2303
+                && usbDevice.getProductId() == ComManager.USB_PID_PL2303)//PL2303 settings
         {
-            byte[] lineRequestData = new byte[7];
+           initPL2303Chip();   
+           ctrlOut(baudRate);
+        }else if(usbDevice.getVendorId() == ComManager.USB_VID_V10 && usbDevice.getProductId() == ComManager.USB_PID_V10){
+		   ctrlOut(baudRate);
+		}
+    }
+    private final void ctrlOut(int baudRate)  {
+        byte[] lineRequestData = new byte[7];
 
-            lineRequestData[0] = (byte) (baudRate & 0xff);
-            lineRequestData[1] = (byte) ((baudRate >> 8) & 0xff);
-            lineRequestData[2] = (byte) ((baudRate >> 16) & 0xff);
-            lineRequestData[3] = (byte) ((baudRate >> 24) & 0xff);
+        lineRequestData[0] = (byte) (baudRate & 0xff);
+        lineRequestData[1] = (byte) ((baudRate >> 8) & 0xff);
+        lineRequestData[2] = (byte) ((baudRate >> 16) & 0xff);
+        lineRequestData[3] = (byte) ((baudRate >> 24) & 0xff);
 
-            lineRequestData[4] = 0;
-            lineRequestData[5] = 0;
-            lineRequestData[6] = (byte) 8;
-            int request_type = UsbConstants.USB_DIR_OUT | UsbConstants.USB_TYPE_CLASS | 0x01;
-            int request = 0x20;
-            Log.d(TAG, "request_type:"+request_type+" / request:"+request);
-            outControlTransfer(request_type, request, 0, 0, lineRequestData);
-        }
+        lineRequestData[4] = 0;
+        lineRequestData[5] = 0;
+        lineRequestData[6] = (byte) 8;
+        outControlTransfer(UsbConstants.USB_DIR_OUT | UsbConstants.USB_TYPE_CLASS | 0x01, 0x20, 0, 0, lineRequestData);
     }
 
     private final void outControlTransfer(int requestType, int request, int value, int index, byte[] data){
@@ -145,9 +162,64 @@ class NativeUsb extends Connection{
             Log.d(TAG, String.format("ControlTransfer with value 0x%x failed: %d", value, result));
         }
     }
+    private void initPL2303Chip() {
+        int mDeviceType = getDeviceType();
+        vendorIn(0x8484, 0, 1);
+        vendorOut(0x0404, 0, null);
+
+        vendorIn(0x8484, 0, 1);
+        vendorIn(0x8383, 0, 1);
+        vendorIn(0x8484, 0, 1);
+
+        vendorOut(0x0404, 1, null);
+        vendorIn(0x8484, 0, 1);
+        vendorIn(0x8383, 0, 1);
+
+        vendorOut(0, 1, null);
+        vendorOut(1, 0, null);
+        vendorOut(2, (mDeviceType == 0) ? 0x44 : 0x24, null);
+    }
+    private int getDeviceType(){
+        int mDeviceType = 0;
+        try {
+            if (usbDevice.getDeviceClass() == 0x02) {
+                mDeviceType = 1;
+            } else{
+                Method getRawDescriptorsMethod = mUsbConnection.getClass().getMethod("getRawDescriptors");
+                byte[] rawDescriptors = (byte[]) getRawDescriptorsMethod.invoke(mUsbConnection);
+                byte maxPacketSize0 = rawDescriptors[7];
+                if (maxPacketSize0 == 64) {
+                    mDeviceType = 0;
+                } else if ((usbDevice.getDeviceClass() == 0x00) || (usbDevice.getDeviceClass() == 0xff)) {
+                    mDeviceType = 2;
+                } else {
+                    mDeviceType = 0;
+                }
+            }
+        }catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return mDeviceType;
+    }
+    private final byte[] inControlTransfer(int requestType, int request, int value, int index, int length)  {
+        byte[] buffer = new byte[length];
+        int result = mUsbConnection.controlTransfer(requestType, request, value, index, buffer, length, 5000);
+        /*if (result != length) {
+            throw new IOException(String.format("ControlTransfer with value 0x%x failed: %d", value, result));
+        }*/
+        return buffer;
+    }
+    private final byte[] vendorIn(int value, int index, int length) {
+        return inControlTransfer(UsbConstants.USB_DIR_IN | UsbConstants.USB_TYPE_VENDOR, 0x01, value, index, length);
+    }
+
+    private final void vendorOut(int value, int index, byte[] data) {
+        outControlTransfer(UsbConstants.USB_DIR_OUT | UsbConstants.USB_TYPE_VENDOR, 0x01, value, index, data);
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    int open(int dev) {
+    int open(int dev , int interface_id) {
         if (mUsbManager == null) {
             return ComManager.ERR_NOT_OPEN;
         }
@@ -160,8 +232,10 @@ class NativeUsb extends Connection{
         while (deviceIterator.hasNext()) {
             usbDevice = deviceIterator.next();
             if (usbDevice.getDeviceId() == id) {
-                if (openEndpoint()) {
+                if (openEndpoint(interface_id)) {
                     if(mReconnectEvent) {
+                        mReconnet = true;
+                        usbInterfaceId = interface_id ;
                         IntentFilter filter = new IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED);
                         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
                         mContext.registerReceiver(mUsbReceiver, filter);
@@ -240,7 +314,7 @@ class NativeUsb extends Connection{
 
         mOpened = false;
         mBcdDevice = -1;
-        if(mReconnectEvent) {
+        if(mReconnet) {
             mContext.unregisterReceiver(mUsbReceiver);
         }
         Log.d(TAG, "close()");
@@ -325,7 +399,7 @@ class NativeUsb extends Connection{
                             device.getProductId() == usbDevice.getProductId() &&
                             getBcdDeviceVal(device) == mBcdDevice) {
                         usbDevice = device;
-                        if (openEndpoint()) {
+                        if (openEndpoint(usbInterfaceId)) {
                             mOpened = true;
                             mOnComEventListener.onEvent(ComManager.EVENT_CONNECT);
                         }

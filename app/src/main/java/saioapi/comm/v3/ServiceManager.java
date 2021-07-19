@@ -61,7 +61,6 @@ class ServiceManager {
                         }
                     }
                 }
-
             } catch (Exception e) {
                 Log.d(TAG, "e =" + e);
             }

@@ -67,9 +67,6 @@ public class Com {
     /** Signals the device just gets connection with host. */
     public static final int EVENT_CONNECT       = 0x00000004;
 
-    /** Indicates that the EPP has been reset. */
-    public static final int EVENT_EPP_RESET     = 0x00000005;
-    
     /** Raw communication. */
     public static final int PROTOCOL_RAW_DATA    = 0x00000000;
     

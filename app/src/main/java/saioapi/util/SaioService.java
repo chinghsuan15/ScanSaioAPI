@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.hardware.display.DisplayManager;
 import android.net.Uri;
 import android.os.Binder;
+import android.os.Handler;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Display;
@@ -151,10 +152,10 @@ public class SaioService {
     public static final int LED_MSR_SLOT_E200CP       = 0x0D;
 
     /** Switch USB mode to host for AP210S/AP220S */
-    public static final int USB_HOST_MODE        = 0;
+    public static final int USB_HOST_MODE             = 0;
 
     /** Switch USB mode to device for AP210S/AP220S */
-    public static final int USB_DEVICE_MODE      = 1;
+    public static final int USB_DEVICE_MODE           = 1;
     
     // T3
     public static final int ANTENNA_INTERNAL = 1;
@@ -184,7 +185,54 @@ public class SaioService {
     public static final String ACTION_DIAG_API                = "commanager.DIAGNOSTIC_API";
     public static final String ACTION_DIAG_NOTIFY_PRIORITY    = "commanager.DIAGNOSTIC_NOTIFY_PRIORITY";
 
-    public static String ACTION_CRADLE_API_CALLBACK_RESPONSE = "com.xac.cradle.api.response";
+    public static final String ACTION_CRADLE_API_CALLBACK_RESPONSE = "com.xac.cradle.api.response";
+
+    /** The Cradle action for of get info for call back */
+    public static final int ACTION_CRADLE_GETINFO       = 0x01;
+    /** The Cradle action for of get Log for call back */
+    public static final int ACTION_CRADLE_GETLOG       = 0x02;
+    /** The Cradle action for of reboot for call back */
+    public static final int ACTION_CRADLE_REBOOT       = 0x03;
+    /** The Cradle action for of reset for call back */
+    public static final int ACTION_CRADLE_RESET       = 0x04;
+    /** The Cradle action for of preupgrade for call back */
+    public static final int ACTION_CRADLE_PREUPGRADLE = 0x05;
+    /** The Cradle action for of transfer for call back */
+    public static final int ACTION_CRADLE_TRANSFER = 0x06;
+    /** The Cradle action for of update for call back */
+    public static final int ACTION_CRADLE_UPDATE = 0x07;
+
+    /** The Cradle action for of action tag for call back */
+    public static final String EXTRA_CRADLE_ACTION = "ACTION";
+    /** The Cradle action for of info tag for call back */
+    public static final String EXTRA_CRADLE_GETINFO = "CRADLE_INFO";
+    /** The Cradle action for of sn tag for call back */
+    public static final String EXTRA_CRADLE_GETSN = "CRADLE_SN";
+    /** The Cradle action for of logpath tag for call back */
+    public static final String EXTRA_CRADLE_GETLOG_PATH = "LOG_PATH";
+    /** The Cradle action for of status tag for call back */
+    public static final String EXTRA_CRADLE_STATUS = "STATUS";
+
+    /** The cradle action return success. */
+    public final static byte STRUCT_ERROR_MESSAGE_SUCESS = 0x00;
+    /** The cradle action return receive error*/
+    public final static byte STRUCT_ERROR_MESSAGE_RECEIVE_ERROR = 0x01;
+    /** The cradle action return receive error*/
+    public final static byte STRUCT_ERROR_MESSAGE_MD5_INVALID = 0x02;
+    /** The cradle action return fileformat error*/
+    public final static byte STRUCT_ERROR_MESSAGE_FILEFORMAT_INVALID = 0x03;
+    /** The cradle action return storage lack error*/
+    public final static byte STRUCT_ERROR_MESSAGE_STORAGE_LACK = 0x04;
+    /** The cradle action return system busy error*/
+    public final static byte STRUCT_ERROR_MESSAGE_SYSTEMBUSY = 0x05;
+    /** The cradle action return system error error*/
+    public final static byte STRUCT_ERROR_MESSAGE_SYSTEMERROR = 0x06;
+    /** The cradle action return response error error*/
+    public final static byte STRUCT_ERROR_RESPONSE_FORMAT = 0x07;
+    /** The cradle action return unknown error error*/
+    public final static byte STRUCT_ERROR_MESSAGE_UNKNOWNERROR = 0x08;
+    /** The cradle action return cradle connect fail error*/
+    public final static byte STRUCT_ERROR_MESSAGE_CONNECTEDFAIL = 0x09;
 
     // diagnostic-device
     public static final String EXTRA_DIAG_DEVICE     = "DEVICE";
@@ -286,9 +334,9 @@ public class SaioService {
     // battery switch mechanism
     private static final String ACTION_SET_CPUFREQ_BY_BATTERY_TEMPERATURE = "SaioService.SET_CPUFREQ_BY_BATTERY_TEMPERATURE";
     private static final String SET_CPUFREQ_BY_BATTERY_TEMPERATURE_ENABLE = "set_cpufreq_by_battery_temperature_enable";
-    private static final String ACTION_SET_CHARGING_SWITCH_MECHANISM = "SaioService.SET_CHARGING_SWITCH_MECHANISM";
-    private static final String SET_CHARGING_SWITCH_TYPE   = "set_charging_switch_type";
-    private static final String SET_CHARGING_SWITCH_ENABLE = "set_charging_switch_enable";
+    private static final String ACTION_SET_CHARGING_SWITCH_MECHANISM      = "SaioService.SET_CHARGING_SWITCH_MECHANISM";
+    private static final String SET_CHARGING_SWITCH_TYPE                  = "set_charging_switch_type";
+    private static final String SET_CHARGING_SWITCH_ENABLE                = "set_charging_switch_enable";
 
     // Switch USB device mode and host mode
     private static final String ACTION_SET_USB_MODE   = "SaioService.SET_USB_MODE";
@@ -338,53 +386,29 @@ public class SaioService {
     // Change RTC
     private static final String ACTION_SET_SYSTEM_DATE_TIME   = "SaioService.SET_SYSTEM_DATE_TIME";
     private static final String SYSTEM_DATE_TIME_MILLISECONDS = "system_date_time_milliseconds";
-	
-	/** The Cradle action for of get info for call back */
-    public static final int ACTION_CRADLE_GETINFO       = 0x01;
-    /** The Cradle action for of get Log for call back */
-    public static final int ACTION_CRADLE_GETLOG       = 0x02;
-    /** The Cradle action for of reboot for call back */
-    public static final int ACTION_CRADLE_REBOOT       = 0x03;
-    /** The Cradle action for of reset for call back */
-    public static final int ACTION_CRADLE_RESET       = 0x04;
-    /** The Cradle action for of preupgrade for call back */
-    public static final int ACTION_CRADLE_PREUPGRADLE = 0x05;
-    /** The Cradle action for of transfer for call back */
-    public static final int ACTION_CRADLE_TRANSFER = 0x06;
-    /** The Cradle action for of update for call back */
-    public static final int ACTION_CRADLE_UPDATE = 0x07;
 
-    /** The Cradle action for of action tag for call back */
-    public static final String EXTRA_CRADLE_ACTION = "ACTION";
-    /** The Cradle action for of info tag for call back */
-    public static final String EXTRA_CRADLE_GETINFO = "CRADLE_INFO";
-    /** The Cradle action for of sn tag for call back */
-    public static final String EXTRA_CRADLE_GETSN = "CRADLE_SN";
-    /** The Cradle action for of logpath tag for call back */
-    public static final String EXTRA_CRADLE_GETLOG_PATH = "LOG_PATH";
-    /** The Cradle action for of status tag for call back */
-    public static final String EXTRA_CRADLE_STATUS = "STATUS";
+    // Set Maxim Power VDD
+    private static final String SET_MAXIM_POWER_VDD = "SaioService.SET_MAXIM_POWER_VDD";
+    private static final String POWER_VDD_HIGH = "POWER_VDD_HIGH";
+    
+    private static final String ACTION_SET_TCP_SYN_RETRIES = "SaioService.SET_TCP_SYN_RETRIES";
+    private static final String EXTRA_TCP_SYN_RETRIES      = "extra_tcp_syn_retries";
 
-    /** The cradle action return success. */
-    public final static byte STRUCT_ERROR_MESSAGE_SUCESS = 0x00;
-    /** The cradle action return receive error*/
-    public final static byte STRUCT_ERROR_MESSAGE_RECEIVE_ERROR = 0x01;
-    /** The cradle action return receive error*/
-    public final static byte STRUCT_ERROR_MESSAGE_MD5_INVALID = 0x02;
-    /** The cradle action return fileformat error*/
-    public final static byte STRUCT_ERROR_MESSAGE_FILEFORMAT_INVALID = 0x03;
-    /** The cradle action return storage lack error*/
-    public final static byte STRUCT_ERROR_MESSAGE_STORAGE_LACK = 0x04;
-    /** The cradle action return system busy error*/
-    public final static byte STRUCT_ERROR_MESSAGE_SYSTEMBUSY = 0x05;
-    /** The cradle action return system error error*/
-    public final static byte STRUCT_ERROR_MESSAGE_SYSTEMERROR = 0x06;
-    /** The cradle action return response error error*/
-    public final static byte STRUCT_ERROR_RESPONSE_FORMAT = 0x07;
-    /** The cradle action return unknown error error*/
-    public final static byte STRUCT_ERROR_MESSAGE_UNKNOWNERROR = 0x08;
-    /** The cradle action return cradle connect fail error*/
-    public final static byte STRUCT_ERROR_MESSAGE_CONNECTEDFAIL = 0x09;
+    //aiming switch
+    private final String ACTION_ENABLE_AIMER = "SaioService.ACTION_ENABLE_AIMER";
+    private final String EXTRA_ENABLE_AIMER = "extra_enable_aimer";
+
+    //flash switch
+    private final String ACTION_ENABLE_FLASH = "SaioService.ACTION_ENABLE_FLASH";
+    private final String EXTRA_ENABLE_FLASH = "extra_enable_flash";
+
+    //set aiming
+    private final String ACTION_SET_AIMER = "SaioService.ACTION_SET_AIMER";
+    private final String EXTRA_AIMER_DUTYCYCLE = "extra_aimer_dutyCycle";
+    private final String EXTRA_AIMER_PULLHIGH = "extra_aimer_pullHigh";
+
+    //start aimer service
+    private final String ACTION_START_BCRSERVICE = "SaioService.ACTION_START_BCRSERVICE";
 
     //---- members ---------------------------------------------------------------------------------
     private Context mContext;
@@ -394,6 +418,7 @@ public class SaioService {
     private BlLevelReceiver mBlLevelReceiver;
     private OnCradleStatusListener mOnCradleStatusListener;
     private CradleStatusReceiver mCradleStatusReceiver;
+
     /**
      * SaioService constructor.
      *
@@ -414,10 +439,11 @@ public class SaioService {
     public SaioService(Context context){
         mContext = context;
     }
+
     /**
      * The method will register OnCradleListener
      *
-     * @param onCradleStatusListener listener to get data from cradle
+     * @param OnCradleStatusListener listener to get data from cradle
      */
     public void setOnCradleListener(OnCradleStatusListener onCradleStatusListener){
         mOnCradleStatusListener = onCradleStatusListener;
@@ -426,6 +452,7 @@ public class SaioService {
         filter.addAction(ACTION_CRADLE_API_CALLBACK_RESPONSE);
         mContext.registerReceiver(mCradleStatusReceiver, filter);
     }
+
     /**
      * The method will unregister OnSaioListener.
      *
@@ -797,10 +824,9 @@ public class SaioService {
     }
 
     /**
-     * The method start polling ctls leds status.Use this method,then recevie intent "SaioService.CHANGE_CTLSLed" and extra Int objects with names "ctls_led" to get Ctls Leds status value.The value is Ctls 4 led lights correspond to a 4-bit number.
-     * <p>
-     *     Note: only for A3
-     * </p>
+     * The method start polling ctls leds status. Use this method,then recevie intent "SaioService.CHANGE_CTLSLed" and extra Int objects with names "ctls_led" to get ctls leds status value.
+     * The value is Ctls 4 led lights correspond to a 4-bit number. Display the decimal value in 4 bit binary format using 4 leds where a 1 is represented as a lit led. The lowest bit corresponds to the first led on the left.
+     * ex: 3(Decimal)-> 0011(Binary). If the obtained ctls leds status value is 3, the first and second leds on the left are lit.
      */
     public void startPollingCtlsLeds(){
         Intent StartIntent = new Intent();
@@ -810,14 +836,25 @@ public class SaioService {
 
     /**
      * The method stop polling ctls leds status.
-     * <p>
-     *     Note: only for A3
-     * </p>
      */
     public void stopPollingCtlsLeds(){
         Intent StopIntent = new Intent();
         StopIntent.setAction(STOP_POLLING_CTLS_LED);
         mContext.sendBroadcast(StopIntent);
+    }
+
+     /**
+     * Set Maxim power vdd to high or low level.
+     *
+     * @param high If true, set Maxim power vdd to high level and pull the reset pin of Maxim high.
+                   If false, set Maxim power vdd to low level and pull the reset pin of Maxim low.
+     *
+     */
+    public void setMaximPowerVdd (boolean high){
+        Intent setMaximPowerVddIntent = new Intent();
+        setMaximPowerVddIntent.setAction(SET_MAXIM_POWER_VDD);
+        setMaximPowerVddIntent.putExtra(POWER_VDD_HIGH, high);
+        mContext.sendBroadcast(setMaximPowerVddIntent);
     }
 
     /**
@@ -1127,12 +1164,12 @@ public class SaioService {
     public boolean setSuspendTime(int time){
         if (isSuspendAvailable()) {
             if ( (time==PM_SUSPEND_TIME_30_SEC) ||
-                    (time==PM_SUSPEND_TIME_1_MIN)  ||
-                    (time==PM_SUSPEND_TIME_2_MIN)  ||
-                    (time==PM_SUSPEND_TIME_5_MIN)  ||
-                    (time==PM_SUSPEND_TIME_10_MIN) ||
-                    (time==PM_SUSPEND_TIME_30_MIN) ||
-                    (time==PM_SUSPEND_TIME_60_MIN) ) {
+                 (time==PM_SUSPEND_TIME_1_MIN)  ||
+                 (time==PM_SUSPEND_TIME_2_MIN)  ||
+                 (time==PM_SUSPEND_TIME_5_MIN)  ||
+                 (time==PM_SUSPEND_TIME_10_MIN) ||
+                 (time==PM_SUSPEND_TIME_30_MIN) ||
+                 (time==PM_SUSPEND_TIME_60_MIN) ) {
                 Uri CONTENT_PREFERENCE_URI = Uri.parse("content://" + AUTHORITY + "/shared");
                 ContentValues contentValues = new ContentValues();
                 contentValues.put(PM_SUSPEND_TIMEOUT, time);
@@ -1415,15 +1452,13 @@ public class SaioService {
             if(mOnSaioListener == null){
                 return;
             }
-            String action = intent.getAction();
-            if(action != null){
-                if(action.equals(RET_2ND_BRIGHTNESS)){
-                    float currLevel = intent.getFloatExtra(BRIGHTNESS_LEVEL, 0);
-                    mOnSaioListener.onBrightness(currLevel);
-                }else if(action.equals(RET_2ND_TOUCHID)){
-                    int touchId = intent.getIntExtra(SECOND_TOUCHID, 0);
-                    mOnSaioListener.onTouchId(touchId);
-                }
+
+            if(RET_2ND_BRIGHTNESS.equals(intent.getAction())){
+                float currLevel = intent.getFloatExtra(BRIGHTNESS_LEVEL, 0);
+                mOnSaioListener.onBrightness(currLevel);
+            }else if(RET_2ND_TOUCHID.equals(intent.getAction())){
+                int touchId = intent.getIntExtra(SECOND_TOUCHID, 0);
+                mOnSaioListener.onTouchId(touchId);
             }
         }
     }
@@ -1539,12 +1574,12 @@ public class SaioService {
     }
 
     /**
-    * The method will allow usage permission
-    *  let the context  allow OP_GET_USAGE_STATS
-    * <p>
-    * Note: only for A3
-    * </p>
-    */
+     * The method will allow usage permission
+     *  let the context  allow OP_GET_USAGE_STATS
+     * <p>
+     * Note: only for A3
+     * </p>
+     */
     public void allowUsagePermission(){
         Intent intent = new Intent();
         intent.setAction(ACTION_UPDATE_APP_USAGE_PERMISSION);
@@ -1751,6 +1786,72 @@ public class SaioService {
         intent.setAction(ACTION_SET_SYSTEM_DATE_TIME);
         intent.putExtra(SYSTEM_DATE_TIME_MILLISECONDS , calendar.getTimeInMillis());
         mContext.sendBroadcast(intent);
+    }
+
+    /**
+     * The method will set value of tcp_syn_retries
+     * @param value 1 ~ 127
+     *
+     */
+    public void setTcpSynRetries(int value)
+    {
+        Intent intent = new Intent();
+        intent.setAction(ACTION_SET_TCP_SYN_RETRIES);
+        intent.putExtra(EXTRA_TCP_SYN_RETRIES, value);
+        mContext.sendBroadcast(intent);
+    }
+
+    /**
+     *Set Aiming switch status if it's available.
+     * @param enabled Aiming switch status
+     */
+    public void enableAimer(final boolean enabled) {
+        Intent i = new Intent();
+        i.setAction(ACTION_START_BCRSERVICE);
+        mContext.sendBroadcast(i);
+        Handler mHandler = new Handler();
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Intent intent = new Intent();
+                intent.setAction(ACTION_ENABLE_AIMER);
+                intent.putExtra(EXTRA_ENABLE_AIMER, String.valueOf(enabled));
+                mContext.sendBroadcast(intent);
+            }
+        },300);
+    }
+
+    /**
+     *Set flash switch status if it's available.
+     * @param enabled flash switch status
+     */
+    public void enableFlash(boolean enabled) {
+        Intent intent = new Intent();
+        intent.setAction(ACTION_ENABLE_FLASH);
+        intent.putExtra(EXTRA_ENABLE_FLASH, String.valueOf(enabled));
+        mContext.sendBroadcast(intent);
+    }
+
+    /**
+     *Set Aiming high and dutyCycle
+     * @param dutyCycle set gpio dutyCycle , unit:ms
+     * @param pullHigh set gpio high , unit:ms
+     */
+    public void setAimer(final int dutyCycle, final int pullHigh) {
+        Intent i = new Intent();
+        i.setAction(ACTION_START_BCRSERVICE);
+        mContext.sendBroadcast(i);
+        Handler mHandler = new Handler();
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Intent intent = new Intent();
+                intent.setAction(ACTION_SET_AIMER);
+                intent.putExtra(EXTRA_AIMER_DUTYCYCLE, dutyCycle);
+                intent.putExtra(EXTRA_AIMER_PULLHIGH, pullHigh);
+                mContext.sendBroadcast(intent);
+            }
+        },300);
     }
 
     private static native int native_set2ndTouchActive(int onoff);

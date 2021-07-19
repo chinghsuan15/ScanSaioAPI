@@ -27,7 +27,7 @@ final public class PrintJsInterface implements SaioJsInterface
     final static public int ERR_DECODE_IO_FAIL          = 0x0000EE01;
     final static public int ERR_DECODE_MALFORMED_URL    = 0x0000EE02;
     
-    final static private String URI_HTTP_PREFIX ="http";
+    final static private String URI_HTTPS_PREFIX ="https";
     
     private JsCallback mCallback = null;
     private Context mContext = null;
@@ -529,7 +529,7 @@ final public class PrintJsInterface implements SaioJsInterface
         boolean failToDecode = false;
         try
         {
-            if(strPath.startsWith(URI_HTTP_PREFIX))
+            if(strPath.startsWith(URI_HTTPS_PREFIX))
             {
                 URL imageURL = new URL(strPath);
                 HttpURLConnection connection = null;
